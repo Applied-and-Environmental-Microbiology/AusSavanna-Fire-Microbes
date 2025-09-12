@@ -1,6 +1,9 @@
 # Bioinformatics data files
 /bioinformatics/*/data/
 
+# Mac OS files
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
