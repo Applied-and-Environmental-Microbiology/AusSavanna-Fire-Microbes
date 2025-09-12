@@ -1,3 +1,6 @@
+# Bioinformatics data files
+/bioinformatics/*/data/
+
 # History files
 .Rhistory
 .Rapp.history
