@@ -8,6 +8,7 @@ require(tidyverse)
 litter_levels <- c("Leaf", "Grass")
 regime_levels <- c("E2", "L2", "U")
 community_levels <- c("Soil bacteria", "Litter bacteria" ,"Soil fungi", "Litter fungi")
+regime_litter_type_levels <- c("E2_Leaf", "E2_Grass", "L2_Leaf", "L2_Grass", "U_Leaf", "U_Grass")
 
 # Read in the sample metadata
 metadata_fungi_soil <- data.table::fread("data/sample_metadata_fungi.txt") %>%
@@ -16,7 +17,8 @@ metadata_fungi_soil <- data.table::fread("data/sample_metadata_fungi.txt") %>%
   # Order the regime and litter type factors
   mutate(
     regime = factor(regime, levels = regime_levels),
-    litter_type = factor(litter_type, levels = litter_levels)
+    litter_type = factor(litter_type, levels = litter_levels),
+    regime_litter_type = factor(paste(regime, litter_type, sep = "_"), levels = regime_litter_type_levels)
   )
 metadata_fungi_litter <- data.table::fread("data/sample_metadata_fungi.txt") %>%
   filter(community == "Leaf") %>%
@@ -24,7 +26,8 @@ metadata_fungi_litter <- data.table::fread("data/sample_metadata_fungi.txt") %>%
   # Order the regime and litter type factors
   mutate(
     regime = factor(regime, levels = regime_levels),
-    litter_type = factor(litter_type, levels = litter_levels)
+    litter_type = factor(litter_type, levels = litter_levels),
+    regime_litter_type = factor(paste(regime, litter_type, sep = "_"), levels = regime_litter_type_levels)
   )
 metadata_bacteria_soil <- data.table::fread("data/sample_metadata_bacteria.txt") %>%
   filter(community == "Soil") %>%
@@ -32,7 +35,8 @@ metadata_bacteria_soil <- data.table::fread("data/sample_metadata_bacteria.txt")
   # Order the regime and litter type factors
   mutate(
     regime = factor(regime, levels = regime_levels),
-    litter_type = factor(litter_type, levels = litter_levels)
+    litter_type = factor(litter_type, levels = litter_levels),
+    regime_litter_type = factor(paste(regime, litter_type, sep = "_"), levels = regime_litter_type_levels)
   )
 metadata_bacteria_litter <- data.table::fread("data/sample_metadata_bacteria.txt") %>%
   filter(community == "Leaf") %>%
@@ -40,7 +44,8 @@ metadata_bacteria_litter <- data.table::fread("data/sample_metadata_bacteria.txt
   # Order the regime and litter type factors
   mutate(
     regime = factor(regime, levels = regime_levels),
-    litter_type = factor(litter_type, levels = litter_levels)
+    litter_type = factor(litter_type, levels = litter_levels),
+    regime_litter_type = factor(paste(regime, litter_type, sep = "_"), levels = regime_litter_type_levels)
   )
 
 # Read in the distance matices
@@ -99,6 +104,11 @@ for (community in c("fungi", "bacteria")) {
     # Pairwise PERMANOVA for different litter types
     pairwise_litter <- pairwise.adonis(dist_matrix, metadata$litter_type, p.adjust.m = "none")
     permanova_results[[paste0(community, "_", environment, "_litter")]] <- pairwise_litter
+    
+    # Pairwise PERMANOVA for different regime and litter type combinations
+    pairwise_regime_litter <- pairwise.adonis(dist_matrix, metadata$regime_litter_type, p.adjust.m = "none")
+    permanova_results[[paste0(community, "_", environment, "_regime_litter")]] <- pairwise_regime_litter
+    
   }
 }
 
@@ -140,7 +150,7 @@ main_permanova_table <- bind_rows(
   mutate(Community = factor(Community, levels = community_levels)) %>%
   arrange(Community)
 
-# Create table for pairwise comparisons
+# Create table for pairwise comparisons of fire regimes
 pairwise_regime_table <- bind_rows(
   lapply(c("fungi_soil_regime", "fungi_litter_regime", "bacteria_soil_regime", "bacteria_litter_regime"), function(name) {
     result <- permanova_results[[name]]
@@ -183,6 +193,103 @@ pairwise_regime_table <- bind_rows(
   arrange(Comparison) %>%
   arrange(Community)
 
+# Create table for pairwise comparisons of fire regime-litter type combinations
+pairwise_regime_litter_table <- bind_rows(
+  lapply(c("fungi_soil_regime_litter", "fungi_litter_regime_litter", 
+           "bacteria_soil_regime_litter", "bacteria_litter_regime_litter"), function(name) {
+             result <- permanova_results[[name]]
+             result <- as.data.frame(result)
+             result$Comparison <- rownames(result)
+             result$Community <- name
+             rownames(result) <- NULL
+             return(result)
+           })
+) %>%
+  select(
+    Community, Comparison = pairs, `pseudo-F` = F.Model, `R2 (%)` = R2, `P-value` = `p.adjusted`
+  ) %>%
+  mutate(
+    `pseudo-F` = formatC(`pseudo-F`, format = "f", digits = 2),
+    `R2 (%)`   = formatC(`R2 (%)` * 100, format = "f", digits = 0),
+    `P-value`  = formatC(`P-value`, format = "f", digits = 3),
+    Community  = case_when(
+      Community == "fungi_soil_regime_litter"    ~ "Soil fungi",
+      Community == "fungi_litter_regime_litter"  ~ "Litter fungi",
+      Community == "bacteria_soil_regime_litter" ~ "Soil bacteria",
+      Community == "bacteria_litter_regime_litter" ~ "Litter bacteria",
+      TRUE ~ Community
+    ),
+    Comparison = case_when(
+      # --- Early vs Late (all permutations) ---
+      Comparison == "E2_Leaf vs L2_Leaf"   ~ "Early (leaf) vs. late (leaf)",
+      Comparison == "L2_Leaf vs E2_Leaf"   ~ "Early (leaf) vs. late (leaf)",
+      Comparison == "E2_Leaf vs L2_Grass"  ~ "Early (leaf) vs. late (grass)",
+      Comparison == "L2_Grass vs E2_Leaf"  ~ "Early (leaf) vs. late (grass)",
+      Comparison == "E2_Grass vs L2_Leaf"  ~ "Early (grass) vs. late (leaf)",
+      Comparison == "L2_Leaf vs E2_Grass"  ~ "Early (grass) vs. late (leaf)",
+      Comparison == "E2_Grass vs L2_Grass" ~ "Early (grass) vs. late (grass)",
+      Comparison == "L2_Grass vs E2_Grass" ~ "Early (grass) vs. late (grass)",
+      
+      # --- Early vs Unburnt ---
+      Comparison == "E2_Leaf vs U_Leaf"   ~ "Early (leaf) vs. unburnt (leaf)",
+      Comparison == "U_Leaf vs E2_Leaf"   ~ "Early (leaf) vs. unburnt (leaf)",
+      Comparison == "E2_Leaf vs U_Grass"  ~ "Early (leaf) vs. unburnt (grass)",
+      Comparison == "U_Grass vs E2_Leaf"  ~ "Early (leaf) vs. unburnt (grass)",
+      Comparison == "E2_Grass vs U_Leaf"  ~ "Early (grass) vs. unburnt (leaf)",
+      Comparison == "U_Leaf vs E2_Grass"  ~ "Early (grass) vs. unburnt (leaf)",
+      Comparison == "E2_Grass vs U_Grass" ~ "Early (grass) vs. unburnt (grass)",
+      Comparison == "U_Grass vs E2_Grass" ~ "Early (grass) vs. unburnt (grass)",
+      
+      # --- Late vs Unburnt ---
+      Comparison == "L2_Leaf vs U_Leaf"   ~ "Late (leaf) vs. unburnt (leaf)",
+      Comparison == "U_Leaf vs L2_Leaf"   ~ "Late (leaf) vs. unburnt (leaf)",
+      Comparison == "L2_Leaf vs U_Grass"  ~ "Late (leaf) vs. unburnt (grass)",
+      Comparison == "U_Grass vs L2_Leaf"  ~ "Late (leaf) vs. unburnt (grass)",
+      Comparison == "L2_Grass vs U_Leaf"  ~ "Late (grass) vs. unburnt (leaf)",
+      Comparison == "U_Leaf vs L2_Grass"  ~ "Late (grass) vs. unburnt (leaf)",
+      Comparison == "L2_Grass vs U_Grass" ~ "Late (grass) vs. unburnt (grass)",
+      Comparison == "U_Grass vs L2_Grass" ~ "Late (grass) vs. unburnt (grass)",
+      
+      # --- Leaf vs Grass within same fire regime (always leaf first) ---
+      Comparison == "E2_Leaf vs E2_Grass" ~ "Early (leaf) vs. early (grass)",
+      Comparison == "E2_Grass vs E2_Leaf" ~ "Early (leaf) vs. early (grass)",
+      Comparison == "L2_Leaf vs L2_Grass" ~ "Late (leaf) vs. late (grass)",
+      Comparison == "L2_Grass vs L2_Leaf" ~ "Late (leaf) vs. late (grass)",
+      Comparison == "U_Leaf vs U_Grass"   ~ "Unburnt (leaf) vs. unburnt (grass)",
+      Comparison == "U_Grass vs U_Leaf"   ~ "Unburnt (leaf) vs. unburnt (grass)",
+      
+      TRUE ~ Comparison
+    )
+  ) %>%
+  # Order factors
+  mutate(
+    Community = factor(Community, levels = community_levels),
+    Comparison = factor(Comparison, levels = c(
+      "Early (leaf) vs. late (leaf)",
+      "Early (leaf) vs. late (grass)",
+      "Early (grass) vs. late (leaf)",
+      "Early (grass) vs. late (grass)",
+      "Early (leaf) vs. unburnt (leaf)",
+      "Early (leaf) vs. unburnt (grass)",
+      "Early (grass) vs. unburnt (leaf)",
+      "Early (grass) vs. unburnt (grass)",
+      "Late (leaf) vs. unburnt (leaf)",
+      "Late (leaf) vs. unburnt (grass)",
+      "Late (grass) vs. unburnt (leaf)",
+      "Late (grass) vs. unburnt (grass)",
+      "Early (leaf) vs. early (grass)",
+      "Late (leaf) vs. late (grass)",
+      "Unburnt (leaf) vs. unburnt (grass)"
+    ))
+  ) %>%
+  arrange(Comparison) %>%
+  arrange(Community)
+
+# View the results
+main_permanova_table
+pairwise_regime_table
+pairwise_regime_litter_table
+
 #### (1c) Save the results ####
 
 data.table::fwrite(
@@ -193,5 +300,10 @@ data.table::fwrite(
 data.table::fwrite(
   pairwise_regime_table,
   "output/permanova_pairwise_results.txt",
+  sep = "\t"
+)
+data.table::fwrite(
+  pairwise_regime_litter_table,
+  "output/permanova_pairwise_regime_litter_results.txt",
   sep = "\t"
 )
