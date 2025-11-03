@@ -12,13 +12,6 @@ shannon_div <- function(x) {
   -sum(p * log(p))
 }
 
-# Helper function for mapping from sequences to OTU IDs
-sequence_to_otu_mapping <- data.frame(
-  sequence = as.character(sequences),
-  otu_id = names(sequences),
-  stringsAsFactors = FALSE
-)
-
 # Read in the raw data files: OTU IDs in the OTU and taxonomy tables need to be
 # converted from actual sequence to OTU IDs (names in the fatsa file)
 otus_raw <- fread("data/ASVs_abundance_filtered.txt")
@@ -30,6 +23,13 @@ metadata <- fread("data/metadata.csv") %>%
     quadrat = Quadrat, litter_type = Veg, community = Community
   )
 
+# Helper function for mapping from sequences to OTU IDs
+sequence_to_otu_mapping <- data.frame(
+  sequence = as.character(sequences),
+  otu_id = names(sequences),
+  stringsAsFactors = FALSE
+)
+
 # Replace sequence IDs with OTU IDs in both tables
 otus <- otus_raw %>%
   left_join(sequence_to_otu_mapping, by = c("ASV_ID" = "sequence")) %>%
@@ -39,8 +39,7 @@ otus <- otus_raw %>%
 taxonomy <- taxonomy_raw %>%
   left_join(sequence_to_otu_mapping, by = c("ASV_ID" = "sequence")) %>%
   select(ASV_ID = otu_id, everything(), -ASV_ID) %>%  # Keep ASV_ID column name for compatibility  
-  filter(!is.na(ASV_ID))  
-
+  filter(!is.na(ASV_ID))
 
 # (1) Assess minimum read depth ------------------------------------------------
 
@@ -213,6 +212,19 @@ plot_rare_curve <- map_dfr(rare_curve, bind_rows) %>%
 # Display the plot
 print(plot_rare_curve)
 
+# Save the data for plotting with fungal estimates
+rare_curve_bacteria <- rare_curve
+otus_trans_bacteria <- otus_trans
+min_depth_bacteria <- min_depth
+max_depth_bacteria <- max_depth
+save(
+  rare_curve_bacteria,
+  otus_trans_bacteria,
+  min_depth_bacteria,
+  max_depth_bacteria,
+  file = "../../data/rare_curve_bacteria.RData"
+)
+
 # (4) Compute alpha-diversity metrics ------------------------------------------
 
 # For alpha-diversity analyses we will rarefy to 4,300 reads (minimum depth)
@@ -263,6 +275,18 @@ alpha_diversity_bacteria = otus_srs %>%
 # Join the alpha-diversity metrics with the metadata
 metadata_div <- metadata %>%
   inner_join(alpha_diversity_bacteria, by = "sample_id")
+
+# Plot the SRS richness against read depth
+metadata_div %>%
+  left_join(sample_id_depth, by = "sample_id") %>%
+  ggplot(aes(x = n_seqs, y = richness_bacteria)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor(
+    # Add the r2 label
+    aes(label = after_stat(rr.label))
+  ) +
+  labs(x = "Read depth", y = "SRS Richness")
 
 # (5) Save the outputs ---------------------------------------------------------
 
