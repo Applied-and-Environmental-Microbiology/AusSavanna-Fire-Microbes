@@ -193,6 +193,14 @@ plot_rare_curve <- map_dfr(rare_curve, bind_rows) %>%
 # Display the plot
 print(plot_rare_curve)
 
+# Save the data for plotting with fungal estimates
+rare_curve_fungi <- rare_curve
+save(
+  rare_curve_fungi,
+  file = "../../data/rare_curve_bacteria.RData"
+)
+
+
 # (4) Compute alpha-diversity metrics ------------------------------------------
 
 # For alpha-diversity analyses we will rarefy to 4,900 reads (minimum depth)
@@ -243,6 +251,18 @@ alpha_diversity_fungi = otus_srs %>%
 # Join the alpha-diversity metrics with the metadata
 metadata_div <- metadata %>%
   inner_join(alpha_diversity_fungi, by = "sample_id")
+
+# Plot the SRS richness against read depth
+metadata_div %>%
+  left_join(sample_id_depth, by = "sample_id") %>%
+  ggplot(aes(x = n_seqs, y = richness_fungi)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor(
+    # Add the r2 label
+    aes(label = after_stat(rr.label))
+  ) +
+  labs(x = "Read depth", y = "SRS Richness")
 
 # (5) Save the outputs ---------------------------------------------------------
 
