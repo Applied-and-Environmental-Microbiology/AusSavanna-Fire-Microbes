@@ -10,6 +10,7 @@ library(parameters)
 library(parallel)
 library(doParallel)
 library(tidyverse)
+source("code/bootstrap_effects.R")
 
 # Soil bacteria data
 data_bacteria_soil <- data.table::fread("data/sample_metadata_bacteria.txt") %>%
