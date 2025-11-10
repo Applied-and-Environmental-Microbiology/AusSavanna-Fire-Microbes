@@ -5,40 +5,102 @@ require(tidyverse)
 # Read in the data
 load("data/alpha_diversity_plot_data.RData")
 
-#### Shannon diversity plots wide ####
+#### Theme ####
+litter_colours <- c(
+  "Broadleaf" = "#3181FF",
+  "Grass" = "#FFB302"
+)
+tag_size <- 14
+strip_size <- 12
+title_size <- 10
+text_size <- 8
+my_theme <- theme_minimal() +
+  theme(
+    panel.border = element_rect(linewidth = 0.5, colour = "grey70", fill = NA),
+    panel.grid = element_line(colour = "grey90", linewidth = 0.15),
+    axis.title = element_text(size = title_size),
+    axis.text = element_text(size = text_size),
+    strip.text = element_text(size = strip_size, face = "bold"),
+    plot.tag = element_markdown(size = tag_size),
+    legend.position = "none",
+    aspect.ratio = 1
+  )
 
-# Richness raw data plot
-bacteria_diversity_plot <- ggplot() +
+#### Create dummy legend ####
+dummy_litter_data <- data.frame(
+  litter_type = factor(c("Broadleaf", "Grass"), levels = c("Broadleaf", "Grass")),
+  value = 1:2
+)
+
+dummy_legend_plot <- ggplot(
+  dummy_litter_data, 
+  aes(x = value, y = value, fill = litter_type)
+) +
   geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
+    colour = alpha('grey30', 0.5),
+    shape = 21,
+    size = 5
+  ) +
+  scale_fill_manual(values = litter_colours, name = "Litter type") +
+  theme_void() +
+  scale_y_continuous(limits = c(0, 0))
+
+dummy_legend <- cowplot::get_legend(dummy_legend_plot)
+
+#### Helper function for formatting intercepts ####
+format_intercept <- function(mean_val, lower_val, upper_val) {
+  format_val <- function(x) {
+    if (abs(x) >= 100) {
+      sprintf("%.0f", x)
+    } else if (abs(x) >= 10) {
+      sprintf("%.1f", x)
+    } else {
+      sprintf("%.2f", x)
+    }
+  }
+  
+  paste0(
+    "&beta;<sub>0</sub> = ",
+    format_val(mean_val),
+    " [",
+    format_val(lower_val),
+    ", ",
+    format_val(upper_val),
+    "]"
+  )
+}
+
+#### Prepare intercept annotations ####
+intercept_annotations <- boot_intercepts %>%
+  separate(Intercept, into = c("mean", "ci"), sep = " \\[", remove = FALSE) %>%
+  separate(ci, into = c("lower", "upper"), sep = ", ", remove = FALSE) %>%
+  mutate(
+    mean = as.numeric(mean),
+    lower = as.numeric(lower),
+    upper = as.numeric(gsub("\\]", "", upper)),
+    label = pmap_chr(list(mean, lower, upper), format_intercept),
+    x = -Inf,
+    y = Inf,
+    hjust = 1,
+    vjust = 0.1
+  )
+
+#### FIGURE 1: Shannon diversity (Bacteria & Fungi) ####
+
+## Bacteria Shannon diversity plot
+bacteria_shannon_plot <- ggplot() +
+  geom_point(
+    data = raw_data %>% 
+      filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon"))),
     aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
   ) +
   geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon"))),
     aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
     colour = "black",
     position = position_dodge(width = 0.5),
@@ -46,16 +108,9 @@ bacteria_diversity_plot <- ggplot() +
     size = 1
   ) +
   geom_point(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon"))),
     aes(x = regime, y = emmean, fill = litter_type),
     shape = 21,
     colour = "black",
@@ -65,213 +120,14 @@ bacteria_diversity_plot <- ggplot() +
   my_theme +
   theme(
     axis.text.x = element_blank(),
-    # Adjust the tag position to account for the strip text
     plot.tag.position = c(0.03, 0.92)
   ) +
   scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c(
-          "Soil bacteria shannon", "Litter bacteria shannon",
-          "Soil fungi shannon", "Litter fungi shannon"
-        )) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
+    limits = c(4, 6.5),
+    breaks = scales::pretty_breaks(n = 3)
   ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
-  labs(
-    x = NULL,
-    y = "Shannon diversity",
-    title = "Bacteria",
-    tag = "(**a**)"
-  ) +
-  facet_wrap(
-    ~Response, ncol = 2,
-    labeller = labeller(Response = c(
-      "Soil bacteria shannon" = "Soil",
-      "Litter bacteria shannon" = "Litter"
-    )))
-
-# Display the plot
-bacteria_diversity_plot
-
-# Evenness raw data plot
-fungi_diversity_plot <- ggplot() +
-  geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil fungi shannon", "Litter fungi shannon"
-      )) %>%
-      # Level the responses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
-  ) +
-  geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    width = 0.1,
-    size = 1
-  ) +
-  geom_point(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, fill = litter_type),
-    shape = 21,
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    size = 3
-  ) +
-  my_theme +
-  theme(
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank()
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c(
-          "Soil bacteria shannon", "Litter bacteria shannon",
-          "Soil fungi shannon", "Litter fungi shannon"
-        )) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
-  ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
-  labs(
-    x = NULL,
-    y = NULL,
-    title = "Fungi",
-  ) +
-  facet_wrap(
-    ~Response, ncol = 2,
-    labeller = labeller(Response = c(
-      "Soil fungi shannon" = "Soil",
-      "Litter fungi shannon" = "Litter"
-    )))
-
-# Display the plot
-fungi_diversity_plot
-
-#### Shannon diversity plots long ####
-
-# Richness raw data plot
-bacteria_diversity_plot <- ggplot() +
-  geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
-    aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
-  ) +
-  geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    width = 0.1,
-    size = 1
-  ) +
-  geom_point(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria shannon", "Litter bacteria shannon"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria shannon", "Litter bacteria shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, fill = litter_type),
-    shape = 21,
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    size = 3
-  ) +
-  my_theme +
-  theme(
-    axis.text.x = element_blank(),
-    # Adjust the tag position to account for the strip text
-    plot.tag.position = c(0.03, 0.92)
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
-  ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
   labs(
     x = NULL,
     y = "Shannon diversity",
@@ -282,105 +138,14 @@ bacteria_diversity_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil bacteria shannon" = "Soil",
       "Litter bacteria shannon" = "Litter"
-    )))
+    ))
+  )
 
-# Display the plot
-bacteria_diversity_plot
-
-# Evenness raw data plot
-fungi_diversity_plot <- ggplot() +
-  geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil fungi shannon", "Litter fungi shannon"
-      )) %>%
-      # Level the responses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
-  ) +
-  geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    width = 0.1,
-    size = 1
-  ) +
-  geom_point(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi shannon", "Litter fungi shannon"
-        ))
-      ),
-    aes(x = regime, y = emmean, fill = litter_type),
-    shape = 21,
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    size = 3
-  ) +
-  my_theme +
-  theme(strip.text = element_blank()) +
-  theme(axis.text.x = element_blank()) +
-  scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
-  ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
-  labs(
-    x = NULL,
-    y = "Shannon diversity",
-    tag = "(**b**)"
-  ) +
-  facet_wrap(
-    ~Response, ncol = 2,
-    labeller = labeller(Response = c(
-      "Soil fungi shannon" = "Soil",
-      "Litter fungi shannon" = "Litter"
-    )))
-
-# Display the plot
-fungi_diversity_plot
-
-#### bacteria effect richness & evenness plots ####
-
-# Density data for richness
-richness_effect_density_nudged <- effect_density %>% 
+## Bacteria Shannon effect plot
+bacteria_shannon_density_nudged <- boot_densities %>% 
   filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria shannon", "Litter bacteria shannon"
-    )),
+    Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -389,28 +154,10 @@ richness_effect_density_nudged <- effect_density %>%
     )
   )
 
-# Density data for evenness
-evenness_effect_density_nudged <- effect_density %>%
-  filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi shannon", "Litter fungi shannon"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
-  )
-
-# Mean data for richness
-richness_effect_mean_nudged <- effect_mean %>%
+bacteria_shannon_effect_nudged <- boot_effects %>%
   filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria shannon", "Litter bacteria shannon"
-    )),
+    Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -419,30 +166,10 @@ richness_effect_mean_nudged <- effect_mean %>%
     )
   )
 
-# Mean data for evenness
-evenness_effect_mean_nudged <- effect_mean %>%
-  filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi shannon", "Litter fungi shannon"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
-  )
-
-# Effect plot for richness
-bacteria_diversity_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
-  ) +
+bacteria_shannon_effect_plot <- ggplot() +
+  geom_vline(xintercept = 0, linetype = "dotted") +
   ggridges::geom_density_ridges(
-    data = richness_effect_density_nudged,
+    data = bacteria_shannon_density_nudged,
     aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
         group = interaction(regime, litter_type)),
     stat = "identity", 
@@ -450,31 +177,35 @@ bacteria_diversity_effect_plot <- ggplot() +
     colour = alpha("grey30", 0.5),
     alpha = 0.7
   ) +
-  # Add error bars
   geom_errorbar(
-    data = richness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    data = bacteria_shannon_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
     color = "black",
     width = 0,
     linewidth = 1
   ) +
-  # Add points
   geom_point(
-    data = richness_effect_mean_nudged,
+    data = bacteria_shannon_effect_nudged,
     aes(x = effect_mean, y = regime_nudged, fill = litter_type),
     shape = 21,
     size = 3,
     color = "black"
   ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil bacteria shannon", "Litter bacteria shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria shannon", "Litter bacteria shannon"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
   scale_y_continuous(
-    breaks = unique(richness_effect_density_nudged$regime_numeric),
-    labels = unique(richness_effect_density_nudged$regime),
-    limits = c(0.5, max(richness_effect_density_nudged$regime_numeric) + 0.5)
+    breaks = unique(bacteria_shannon_density_nudged$regime_numeric),
+    labels = unique(bacteria_shannon_density_nudged$regime),
+    limits = c(0.5, max(bacteria_shannon_density_nudged$regime_numeric) + 0.5)
   ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
+  scale_fill_manual(values = litter_colours) +
   coord_flip() +
   my_theme +
   theme(
@@ -490,17 +221,92 @@ bacteria_diversity_effect_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil bacteria shannon" = "Soil",
       "Litter bacteria shannon" = "Litter"
-    )))
+    ))
+  )
 
-# Effect plot for evenness
-fungi_diversity_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
+## Fungi Shannon diversity plot
+fungi_shannon_plot <- ggplot() +
+  geom_point(
+    data = raw_data %>% 
+      filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon"))),
+    aes(x = regime, y = observed_value, color = litter_type),
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
   ) +
+  geom_errorbar(
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon"))),
+    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
+    colour = "black",
+    position = position_dodge(width = 0.5),
+    width = 0.1,
+    size = 1
+  ) +
+  geom_point(
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon"))),
+    aes(x = regime, y = emmean, fill = litter_type),
+    shape = 21,
+    colour = "black",
+    position = position_dodge(width = 0.5),
+    size = 3
+  ) +
+  my_theme +
+  theme(
+    strip.text = element_blank(),
+    axis.text.x = element_blank()
+  ) +
+  scale_y_continuous(
+    limits = c(1.5, 5),
+    breaks = scales::pretty_breaks(n = 3)
+  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
+  labs(
+    x = NULL,
+    y = "Shannon diversity",
+    tag = "(**b**)"
+  ) +
+  facet_wrap(
+    ~Response, ncol = 2,
+    labeller = labeller(Response = c(
+      "Soil fungi shannon" = "Soil",
+      "Litter fungi shannon" = "Litter"
+    ))
+  )
+
+## Fungi Shannon effect plot
+fungi_shannon_density_nudged <- boot_densities %>%
+  filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
+
+fungi_shannon_effect_nudged <- boot_effects %>%
+  filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
+
+fungi_shannon_effect_plot <- ggplot() +
+  geom_vline(xintercept = 0, linetype = "dotted") +
   ggridges::geom_density_ridges(
-    data = evenness_effect_density_nudged,
+    data = fungi_shannon_density_nudged,
     aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
         group = interaction(regime, litter_type)),
     stat = "identity", 
@@ -508,31 +314,35 @@ fungi_diversity_effect_plot <- ggplot() +
     colour = alpha("grey30", 0.5),
     alpha = 0.7
   ) +
-  # Add error bars
   geom_errorbar(
-    data = evenness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    data = fungi_shannon_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
     color = "black",
     width = 0,
     linewidth = 1
   ) +
-  # Add points
   geom_point(
-    data = evenness_effect_mean_nudged,
+    data = fungi_shannon_effect_nudged,
     aes(x = effect_mean, y = regime_nudged, fill = litter_type),
     shape = 21,
     size = 3,
     color = "black"
   ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil fungi shannon", "Litter fungi shannon")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi shannon", "Litter fungi shannon"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
   scale_y_continuous(
-    breaks = unique(evenness_effect_density_nudged$regime_numeric),
-    labels = unique(evenness_effect_density_nudged$regime),
-    limits = c(0.5, max(evenness_effect_density_nudged$regime_numeric) + 0.5)
+    breaks = unique(fungi_shannon_density_nudged$regime_numeric),
+    labels = unique(fungi_shannon_density_nudged$regime),
+    limits = c(0.5, max(fungi_shannon_density_nudged$regime_numeric) + 0.5)
   ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
+  scale_fill_manual(values = litter_colours) +
   coord_flip() +
   my_theme +
   theme(strip.text = element_blank()) +
@@ -545,61 +355,55 @@ fungi_diversity_effect_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil fungi shannon" = "Soil",
       "Litter fungi shannon" = "Litter"
-    )))
+    ))
+  )
 
-figure_bacteria_diversity_evenness <-patchwork::wrap_plots(
-  bacteria_diversity_plot, bacteria_diversity_effect_plot,
-  fungi_diversity_plot, fungi_diversity_effect_plot,
+## Assemble Figure 1
+figure_shannon_diversity <- patchwork::wrap_plots(
+  bacteria_shannon_plot, bacteria_shannon_effect_plot,
+  fungi_shannon_plot, fungi_shannon_effect_plot,
   ncol = 1
 )
 
-figure_bacteria_diversity_evenness_final <- cowplot::plot_grid(
-  figure_bacteria_diversity_evenness, dummy_legend, rel_widths = c(1, 0.24)
+figure_shannon_diversity_final <- cowplot::plot_grid(
+  figure_shannon_diversity, dummy_legend, rel_widths = c(1, 0.24)
 )
 
-# Save the final figure
+# Save Figure 1
 ggsave(
-  filename = "output/figure_shannon_diversity_long.pdf",
-  plot = figure_bacteria_diversity_evenness_final,
-  width = 14,
+  filename = "output/figure_shannon_diversity.tif",
+  plot = figure_shannon_diversity_final,
+  width = 13.5,
   height = 20, 
-  units = "cm"
+  units = "cm",
+  bg = "white"
+)
+ggsave(
+  filename = "output/figure_shannon_diversity.png",
+  plot = figure_shannon_diversity_final,
+  width = 13.5,
+  height = 20, 
+  units = "cm",
+  bg = "white",
+  dpi = 300
 )
 
-#### Bacteria mean richness & evenness plots ####
+#### FIGURE 2: Bacteria richness & evenness ####
 
-# Richness raw data plot
+## Bacteria richness plot
 bacteria_richness_plot <- ggplot() +
   geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil bacteria richness", "Litter bacteria richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria richness", "Litter bacteria richness"
-        ))
-      ),
+    data = raw_data %>% 
+      filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness"))),
     aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
   ) +
   geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria richness", "Litter bacteria richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria richness", "Litter bacteria richness"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness"))),
     aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
     colour = "black",
     position = position_dodge(width = 0.5),
@@ -607,16 +411,9 @@ bacteria_richness_plot <- ggplot() +
     size = 1
   ) +
   geom_point(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil bacteria richness", "Litter bacteria richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria richness", "Litter bacteria richness"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness"))),
     aes(x = regime, y = emmean, fill = litter_type),
     shape = 21,
     colour = "black",
@@ -626,7 +423,6 @@ bacteria_richness_plot <- ggplot() +
   my_theme +
   theme(
     axis.text.x = element_blank(),
-    # Adjust the tag position to account for the strip text
     plot.tag.position = c(0.03, 0.92)
   ) +
   scale_y_continuous(
@@ -639,12 +435,8 @@ bacteria_richness_plot <- ggplot() +
     ),
     breaks = scales::pretty_breaks(n = 5)
   ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
   labs(
     x = NULL,
     y = "Richness",
@@ -655,105 +447,14 @@ bacteria_richness_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil bacteria richness" = "Soil",
       "Litter bacteria richness" = "Litter"
-    )))
+    ))
+  )
 
-# Display the plot
-bacteria_richness_plot
-
-# Evenness raw data plot
-bacteria_evenness_plot <- ggplot() +
-  geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil bacteria evenness", "Litter bacteria evenness"
-      )) %>%
-      # Level the responses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria evenness", "Litter bacteria evenness"
-        ))
-      ),
-    aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
-  ) +
-  geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria evenness", "Litter bacteria evenness"
-        ))
-      ),
-    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    width = 0.1,
-    size = 1
-  ) +
-  geom_point(
-    data = emmean %>% filter(
-      Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil bacteria evenness", "Litter bacteria evenness"
-        ))
-      ),
-    aes(x = regime, y = emmean, fill = litter_type),
-    shape = 21,
-    colour = "black",
-    position = position_dodge(width = 0.5),
-    size = 3
-  ) +
-  my_theme +
-  theme(strip.text = element_blank()) +
-  theme(axis.text.x = element_blank()) +
-  scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
-  ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
-  labs(
-    x = NULL,
-    y = "Evenness",
-    tag = "(**b**)"
-  ) +
-  facet_wrap(
-    ~Response, ncol = 2,
-    labeller = labeller(Response = c(
-      "Soil bacteria evenness" = "Soil",
-      "Litter bacteria evenness" = "Litter"
-    )))
-
-# Display the plot
-bacteria_evenness_plot
-
-#### Bacteria effect richness & evenness plots ####
-
-# Density data for richness
-richness_effect_density_nudged <- effect_density %>% 
+## Bacteria richness effect plot
+bacteria_richness_density_nudged <- boot_densities %>% 
   filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria richness", "Litter bacteria richness"
-    )),
+    Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -762,28 +463,10 @@ richness_effect_density_nudged <- effect_density %>%
     )
   )
 
-# Density data for evenness
-evenness_effect_density_nudged <- effect_density %>%
-  filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria evenness", "Litter bacteria evenness"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
-  )
-
-# Mean data for richness
-richness_effect_mean_nudged <- effect_mean %>%
+bacteria_richness_effect_nudged <- boot_effects %>%
   filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria richness", "Litter bacteria richness"
-    )),
+    Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -792,30 +475,10 @@ richness_effect_mean_nudged <- effect_mean %>%
     )
   )
 
-# Mean data for evenness
-evenness_effect_mean_nudged <- effect_mean %>%
-  filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil bacteria evenness", "Litter bacteria evenness"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
-  )
-
-# Effect plot for richness
 bacteria_richness_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
-  ) +
+  geom_vline(xintercept = 0, linetype = "dotted") +
   ggridges::geom_density_ridges(
-    data = richness_effect_density_nudged,
+    data = bacteria_richness_density_nudged,
     aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
         group = interaction(regime, litter_type)),
     stat = "identity", 
@@ -823,31 +486,35 @@ bacteria_richness_effect_plot <- ggplot() +
     colour = alpha("grey30", 0.5),
     alpha = 0.7
   ) +
-  # Add error bars
   geom_errorbar(
-    data = richness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    data = bacteria_richness_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
     color = "black",
     width = 0,
     linewidth = 1
   ) +
-  # Add points
   geom_point(
-    data = richness_effect_mean_nudged,
+    data = bacteria_richness_effect_nudged,
     aes(x = effect_mean, y = regime_nudged, fill = litter_type),
     shape = 21,
     size = 3,
     color = "black"
   ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil bacteria richness", "Litter bacteria richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria richness", "Litter bacteria richness"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
   scale_y_continuous(
-    breaks = unique(richness_effect_density_nudged$regime_numeric),
-    labels = unique(richness_effect_density_nudged$regime),
-    limits = c(0.5, max(richness_effect_density_nudged$regime_numeric) + 0.5)
+    breaks = unique(bacteria_richness_density_nudged$regime_numeric),
+    labels = unique(bacteria_richness_density_nudged$regime),
+    limits = c(0.5, max(bacteria_richness_density_nudged$regime_numeric) + 0.5)
   ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
+  scale_fill_manual(values = litter_colours) +
   coord_flip() +
   my_theme +
   theme(
@@ -863,17 +530,92 @@ bacteria_richness_effect_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil bacteria richness" = "Soil",
       "Litter bacteria richness" = "Litter"
-    )))
+    ))
+  )
 
-# Effect plot for evenness
-bacteria_evenness_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
+## Bacteria evenness plot
+bacteria_evenness_plot <- ggplot() +
+  geom_point(
+    data = raw_data %>% 
+      filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness"))),
+    aes(x = regime, y = observed_value, color = litter_type),
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
   ) +
+  geom_errorbar(
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness"))),
+    aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
+    colour = "black",
+    position = position_dodge(width = 0.5),
+    width = 0.1,
+    size = 1
+  ) +
+  geom_point(
+    data = emmean %>% 
+      filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness"))),
+    aes(x = regime, y = emmean, fill = litter_type),
+    shape = 21,
+    colour = "black",
+    position = position_dodge(width = 0.5),
+    size = 3
+  ) +
+  my_theme +
+  theme(
+    strip.text = element_blank(),
+    axis.text.x = element_blank()
+  ) +
+  scale_y_continuous(
+    limits = c(0.75, 1),
+    breaks = scales::pretty_breaks(n = 3)
+  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
+  labs(
+    x = NULL,
+    y = "Evenness",
+    tag = "(**b**)"
+  ) +
+  facet_wrap(
+    ~Response, ncol = 2,
+    labeller = labeller(Response = c(
+      "Soil bacteria evenness" = "Soil",
+      "Litter bacteria evenness" = "Litter"
+    ))
+  )
+
+## Bacteria evenness effect plot
+bacteria_evenness_density_nudged <- boot_densities %>%
+  filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
+
+bacteria_evenness_effect_nudged <- boot_effects %>%
+  filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
+
+bacteria_evenness_effect_plot <- ggplot() +
+  geom_vline(xintercept = 0, linetype = "dotted") +
   ggridges::geom_density_ridges(
-    data = evenness_effect_density_nudged,
+    data = bacteria_evenness_density_nudged,
     aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
         group = interaction(regime, litter_type)),
     stat = "identity", 
@@ -881,31 +623,35 @@ bacteria_evenness_effect_plot <- ggplot() +
     colour = alpha("grey30", 0.5),
     alpha = 0.7
   ) +
-  # Add error bars
   geom_errorbar(
-    data = evenness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    data = bacteria_evenness_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
     color = "black",
     width = 0,
     linewidth = 1
   ) +
-  # Add points
   geom_point(
-    data = evenness_effect_mean_nudged,
+    data = bacteria_evenness_effect_nudged,
     aes(x = effect_mean, y = regime_nudged, fill = litter_type),
     shape = 21,
     size = 3,
     color = "black"
   ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil bacteria evenness", "Litter bacteria evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil bacteria evenness", "Litter bacteria evenness"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
   scale_y_continuous(
-    breaks = unique(evenness_effect_density_nudged$regime_numeric),
-    labels = unique(evenness_effect_density_nudged$regime),
-    limits = c(0.5, max(evenness_effect_density_nudged$regime_numeric) + 0.5)
+    breaks = unique(bacteria_evenness_density_nudged$regime_numeric),
+    labels = unique(bacteria_evenness_density_nudged$regime),
+    limits = c(0.5, max(bacteria_evenness_density_nudged$regime_numeric) + 0.5)
   ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
+  scale_fill_manual(values = litter_colours) +
   coord_flip() +
   my_theme +
   theme(strip.text = element_blank()) +
@@ -918,9 +664,11 @@ bacteria_evenness_effect_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil bacteria evenness" = "Soil",
       "Litter bacteria evenness" = "Litter"
-    )))
+    ))
+  )
 
-figure_bacteria_richness_evenness <-patchwork::wrap_plots(
+## Assemble Figure 2
+figure_bacteria_richness_evenness <- patchwork::wrap_plots(
   bacteria_richness_plot, bacteria_richness_effect_plot,
   bacteria_evenness_plot, bacteria_evenness_effect_plot,
   ncol = 1
@@ -930,49 +678,41 @@ figure_bacteria_richness_evenness_final <- cowplot::plot_grid(
   figure_bacteria_richness_evenness, dummy_legend, rel_widths = c(1, 0.24)
 )
 
-# Save the final figure
+# Save Figure 2
 ggsave(
-  filename = "output/figure_bacteria_richness_evenness.pdf",
+  filename = "output/figure_bacteria_richness_evenness.tif",
   plot = figure_bacteria_richness_evenness_final,
-  width = 14,
+  width = 13.5,
   height = 20, 
-  units = "cm"
+  units = "cm",
+  bg = "white"
+)
+ggsave(
+  filename = "output/figure_bacteria_richness_evenness.png",
+  plot = figure_bacteria_richness_evenness_final,
+  width = 13.5,
+  height = 20, 
+  units = "cm",
+  bg = "white",
+  dpi = 300
 )
 
-#### Fungi mean richness & evenness plots ####
+#### FIGURE 3: Fungi richness & evenness ####
 
-# Richness raw data plot
+## Fungi richness plot
 fungi_richness_plot <- ggplot() +
   geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil fungi richness", "Litter fungi richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi richness", "Litter fungi richness"
-        ))
-      ),
+    data = raw_data %>% 
+      filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness"))),
     aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
   ) +
   geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil fungi richness", "Litter fungi richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi richness", "Litter fungi richness"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness"))),
     aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
     colour = "black",
     position = position_dodge(width = 0.5),
@@ -980,16 +720,9 @@ fungi_richness_plot <- ggplot() +
     size = 1
   ) +
   geom_point(
-    data = emmean %>% filter(
-      Response %in% c(
-        "Soil fungi richness", "Litter fungi richness"
-      )) %>%
-      # Level the resonses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi richness", "Litter fungi richness"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi richness", "Litter fungi richness"))%>%
+      mutate(Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness"))),
     aes(x = regime, y = emmean, fill = litter_type),
     shape = 21,
     colour = "black",
@@ -999,7 +732,6 @@ fungi_richness_plot <- ggplot() +
   my_theme +
   theme(
     axis.text.x = element_blank(),
-    # Adjust the tag position to account for the strip text
     plot.tag.position = c(0.03, 0.92)
   ) +
   scale_y_continuous(
@@ -1012,12 +744,8 @@ fungi_richness_plot <- ggplot() +
     ),
     breaks = scales::pretty_breaks(n = 5)
   ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
   labs(
     x = NULL,
     y = "Richness",
@@ -1028,41 +756,106 @@ fungi_richness_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil fungi richness" = "Soil",
       "Litter fungi richness" = "Litter"
-    )))
+    ))
+  )
 
-# Display the plot
-fungi_richness_plot
+## Fungi richness effect plot
+fungi_richness_density_nudged <- boot_densities %>% 
+  filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
 
-# Evenness raw data plot
-fungi_evenness_plot <- ggplot() +
-  geom_point(
-    data = raw_data %>% filter(
-      Response %in% c(
-        "Soil fungi evenness", "Litter fungi evenness"
-      )) %>%
-      # Level the responses
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi evenness", "Litter fungi evenness"
-        ))
-      ),
-    aes(x = regime, y = observed_value, color = litter_type),
-    position = position_jitterdodge(
-      jitter.width = 0.3,
-      jitter.height = 0,
-      dodge.width = 0.5
-    ),
-    alpha = 0.5,
+fungi_richness_effect_nudged <- boot_effects %>%
+  filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
+  mutate(
+    Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness")),
+    regime_numeric = as.numeric(factor(regime)),
+    regime_nudged = case_when(
+      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
+      litter_type == "Grass" ~ regime_numeric + 0.15,
+      TRUE ~ regime_numeric
+    )
+  )
+
+fungi_richness_effect_plot <- ggplot() +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  ggridges::geom_density_ridges(
+    data = fungi_richness_density_nudged,
+    aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
+        group = interaction(regime, litter_type)),
+    stat = "identity", 
+    scale = 0.75, 
+    colour = alpha("grey30", 0.5),
+    alpha = 0.7
   ) +
   geom_errorbar(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi evenness", "Litter fungi evenness"
-        ))
-      ),
+    data = fungi_richness_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    color = "black",
+    width = 0,
+    linewidth = 1
+  ) +
+  geom_point(
+    data = fungi_richness_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, fill = litter_type),
+    shape = 21,
+    size = 3,
+    color = "black"
+  ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi richness", "Litter fungi richness"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
+  scale_y_continuous(
+    breaks = unique(fungi_richness_density_nudged$regime_numeric),
+    labels = unique(fungi_richness_density_nudged$regime),
+    limits = c(0.5, max(fungi_richness_density_nudged$regime_numeric) + 0.5)
+  ) +
+  scale_fill_manual(values = litter_colours) +
+  coord_flip() +
+  my_theme +
+  theme(
+    strip.text = element_blank(),
+    axis.text.x = element_blank()
+  ) +
+  labs(
+    x = "Effect size",
+    y = NULL
+  ) +
+  facet_wrap(
+    ~Response, ncol = 2,
+    labeller = labeller(Response = c(
+      "Soil fungi richness" = "Soil",
+      "Litter fungi richness" = "Litter"
+    ))
+  )
+
+## Fungi evenness plot
+fungi_evenness_plot <- ggplot() +
+  geom_point(
+    data = raw_data %>% 
+      filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness"))),
+    aes(x = regime, y = observed_value, color = litter_type),
+    position = position_jitterdodge(jitter.width = 0.3, jitter.height = 0, dodge.width = 0.5),
+    alpha = 0.5
+  ) +
+  geom_errorbar(
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness"))),
     aes(x = regime, y = emmean, ymin = lower_CI, ymax = upper_CI, group = litter_type),
     colour = "black",
     position = position_dodge(width = 0.5),
@@ -1070,14 +863,9 @@ fungi_evenness_plot <- ggplot() +
     size = 1
   ) +
   geom_point(
-    data = emmean %>% filter(
-      Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
-      # Add factor levels here too!
-      mutate(
-        Response = factor(Response, levels = c(
-          "Soil fungi evenness", "Litter fungi evenness"
-        ))
-      ),
+    data = emmean %>% 
+      filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness"))),
     aes(x = regime, y = emmean, fill = litter_type),
     shape = 21,
     colour = "black",
@@ -1085,24 +873,16 @@ fungi_evenness_plot <- ggplot() +
     size = 3
   ) +
   my_theme +
-  theme(strip.text = element_blank()) +
-  theme(axis.text.x = element_blank()) +
+  theme(
+    strip.text = element_blank(),
+    axis.text.x = element_blank()
+  ) +
   scale_y_continuous(
-    limits = c(
-      0, 
-      raw_data %>%
-        filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
-        pull(observed_value) %>%
-        max()
-    ),
-    breaks = scales::pretty_breaks(n = 5)
+    limits = c(0.35, 1),
+    breaks = scales::pretty_breaks(n = 4)
   ) +
-  scale_color_manual(
-    values = litter_colours[1:2]
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2]
-  ) +
+  scale_color_manual(values = litter_colours) +
+  scale_fill_manual(values = litter_colours) +
   labs(
     x = NULL,
     y = "Evenness",
@@ -1113,35 +893,14 @@ fungi_evenness_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil fungi evenness" = "Soil",
       "Litter fungi evenness" = "Litter"
-    )))
-
-# Display the plot
-fungi_evenness_plot
-
-#### Fungi effect richness & evenness plots ####
-
-# Density data for richness
-richness_effect_density_nudged <- effect_density %>% 
-  filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi richness", "Litter fungi richness"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
+    ))
   )
 
-# Density data for evenness
-evenness_effect_density_nudged <- effect_density %>%
+## Fungi evenness effect plot
+fungi_evenness_density_nudged <- boot_densities %>%
   filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi evenness", "Litter fungi evenness"
-    )),
+    Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -1150,28 +909,10 @@ evenness_effect_density_nudged <- effect_density %>%
     )
   )
 
-# Mean data for richness
-richness_effect_mean_nudged <- effect_mean %>%
-  filter(Response %in% c("Soil fungi richness", "Litter fungi richness")) %>%
-  mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi richness", "Litter fungi richness"
-    )),
-    regime_numeric = as.numeric(factor(regime)),
-    regime_nudged = case_when(
-      litter_type == "Broadleaf" ~ regime_numeric - 0.15,
-      litter_type == "Grass" ~ regime_numeric + 0.15,
-      TRUE ~ regime_numeric
-    )
-  )
-
-# Mean data for evenness
-evenness_effect_mean_nudged <- effect_mean %>%
+fungi_evenness_effect_nudged <- boot_effects %>%
   filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
   mutate(
-    Response = factor(Response, levels = c(
-      "Soil fungi evenness", "Litter fungi evenness"
-    )),
+    Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness")),
     regime_numeric = as.numeric(factor(regime)),
     regime_nudged = case_when(
       litter_type == "Broadleaf" ~ regime_numeric - 0.15,
@@ -1180,73 +921,10 @@ evenness_effect_mean_nudged <- effect_mean %>%
     )
   )
 
-# Effect plot for richness
-fungi_richness_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
-  ) +
-  ggridges::geom_density_ridges(
-    data = richness_effect_density_nudged,
-    aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
-        group = interaction(regime, litter_type)),
-    stat = "identity", 
-    scale = 0.75, 
-    colour = alpha("grey30", 0.5),
-    alpha = 0.7
-  ) +
-  # Add error bars
-  geom_errorbar(
-    data = richness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
-    color = "black",
-    width = 0,
-    linewidth = 1
-  ) +
-  # Add points
-  geom_point(
-    data = richness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, fill = litter_type),
-    shape = 21,
-    size = 3,
-    color = "black"
-  ) +
-  scale_y_continuous(
-    breaks = unique(richness_effect_density_nudged$regime_numeric),
-    labels = unique(richness_effect_density_nudged$regime),
-    limits = c(0.5, max(richness_effect_density_nudged$regime_numeric) + 0.5)
-  ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
-  coord_flip() +
-  my_theme +
-  theme(
-    strip.text = element_blank(),
-    axis.text.x = element_blank()
-    ) +
-  labs(
-    x = "Effect size",
-    y = NULL
-  ) +
-  facet_wrap(
-    ~Response, ncol = 2,
-    labeller = labeller(Response = c(
-      "Soil fungi richness" = "Soil",
-      "Litter fungi richness" = "Litter"
-    )))
-
-# Effect plot for evenness
 fungi_evenness_effect_plot <- ggplot() +
-  # Baseline (the grand mean)
-  geom_vline(
-    xintercept = 0,
-    linetype = "dotted"
-  ) +
+  geom_vline(xintercept = 0, linetype = "dotted") +
   ggridges::geom_density_ridges(
-    data = evenness_effect_density_nudged,
+    data = fungi_evenness_density_nudged,
     aes(x = Effect, y = regime_nudged, height = Density, fill = litter_type, 
         group = interaction(regime, litter_type)),
     stat = "identity", 
@@ -1254,31 +932,35 @@ fungi_evenness_effect_plot <- ggplot() +
     colour = alpha("grey30", 0.5),
     alpha = 0.7
   ) +
-  # Add error bars
   geom_errorbar(
-    data = evenness_effect_mean_nudged,
-    aes(x = effect_mean, y = regime_nudged, 
-        xmin = lower_ci, xmax = upper_ci, group = litter_type),
+    data = fungi_evenness_effect_nudged,
+    aes(x = effect_mean, y = regime_nudged, xmin = lower_ci, xmax = upper_ci, group = litter_type),
     color = "black",
     width = 0,
     linewidth = 1
   ) +
-  # Add points
   geom_point(
-    data = evenness_effect_mean_nudged,
+    data = fungi_evenness_effect_nudged,
     aes(x = effect_mean, y = regime_nudged, fill = litter_type),
     shape = 21,
     size = 3,
     color = "black"
   ) +
+  geom_richtext(
+    data = intercept_annotations %>% 
+      filter(Response %in% c("Soil fungi evenness", "Litter fungi evenness")) %>%
+      mutate(Response = factor(Response, levels = c("Soil fungi evenness", "Litter fungi evenness"))),
+    aes(x = x, y = y, label = label, hjust = hjust, vjust = vjust),
+    size = 3,
+    fill = NA,
+    label.color = NA
+  ) +
   scale_y_continuous(
-    breaks = unique(evenness_effect_density_nudged$regime_numeric),
-    labels = unique(evenness_effect_density_nudged$regime),
-    limits = c(0.5, max(evenness_effect_density_nudged$regime_numeric) + 0.5)
+    breaks = unique(fungi_evenness_density_nudged$regime_numeric),
+    labels = unique(fungi_evenness_density_nudged$regime),
+    limits = c(0.5, max(fungi_evenness_density_nudged$regime_numeric) + 0.5)
   ) +
-  scale_fill_manual(
-    values = litter_colours[1:2],
-  ) +
+  scale_fill_manual(values = litter_colours) +
   coord_flip() +
   my_theme +
   theme(strip.text = element_blank()) +
@@ -1291,9 +973,11 @@ fungi_evenness_effect_plot <- ggplot() +
     labeller = labeller(Response = c(
       "Soil fungi evenness" = "Soil",
       "Litter fungi evenness" = "Litter"
-    )))
+    ))
+  )
 
-figure_fungi_richness_evenness <-patchwork::wrap_plots(
+## Assemble Figure 3
+figure_fungi_richness_evenness <- patchwork::wrap_plots(
   fungi_richness_plot, fungi_richness_effect_plot,
   fungi_evenness_plot, fungi_evenness_effect_plot,
   ncol = 1
@@ -1303,11 +987,22 @@ figure_fungi_richness_evenness_final <- cowplot::plot_grid(
   figure_fungi_richness_evenness, dummy_legend, rel_widths = c(1, 0.24)
 )
 
-# Save the final figure
+# Save the figure
 ggsave(
-  filename = "output/figure_fungi_richness_evenness.pdf",
+  filename = "output/figure_fungi_richness_evenness.png",
   plot = figure_fungi_richness_evenness_final,
-  width = 14,
+  width = 13.5,
   height = 20, 
-  units = "cm"
+  units = "cm",
+  bg = "white",
+  dpi = 300
+)
+
+ggsave(
+  filename = "output/figure_fungi_richness_evenness.tif",
+  plot = figure_fungi_richness_evenness_final,
+  width = 13.5,
+  height = 20, 
+  units = "cm",
+  bg = "white"
 )

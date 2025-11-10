@@ -294,7 +294,7 @@ figure <- patchwork::wrap_plots(
 
 # Add the legend
 figure_final <- cowplot::plot_grid(
-  figure, legend_dummy, rel_widths = c(1, 0.15)
+  figure, legend_dummy, rel_widths = c(1, 0.18)
 )
 
 # Create output directory
@@ -304,15 +304,14 @@ if (!dir.exists("output")) {
 
 # Save figure
 ggsave(
-  "output/figure_pcoa.pdf",
-  width = 15, height = 13, units = "cm",
-)
-ggsave(
   "output/figure_pcoa.tif",
-  width = 15, height = 13, units = "cm",
+  width = 15.5, height = 13, units = "cm",
+  bg = "white"
 )
 ggsave(
   "output/figure_pcoa.png",
-  width = 15, height = 13, units = "cm", dpi = 300
+  width = 15.5, height = 13, units = "cm", 
+  bg = "white",
+  dpi = 300
 )
 
