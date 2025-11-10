@@ -9,55 +9,70 @@ require(tidyverse)
 #### Data ####
 
 # Define the factor levels
-litter_levels <- c("Leaf", "Grass")
-regime_levels <- c("E2", "L2", "U")
+litter_levels    <- c("Leaf", "Grass")
+regime_levels    <- c("Early", "Late", "Unburnt")
 community_levels <- c("Soil bacteria", "Litter bacteria" ,"Soil fungi", "Litter fungi")
 
-# Read in the sample metadata
+### --- Fungi: Soil --- ###
 metadata_fungi_soil <- data.table::fread("data/sample_metadata_fungi.txt") %>%
   filter(community == "Soil") %>%
   select(
-    everything(), PCo1 = "pco1_54_soil_fungi", PCo2 = "pco2_39_soil_fungi",
+    everything(),
+    PCo1 = "pco1_54_soil_fungi",
+    PCo2 = "pco2_39_soil_fungi",
     -c("community", "pco1_57_leaf_fungi", "pco2_38_leaf_fungi")
-    ) %>%
-  # Order the regime and litter type factors
+  ) %>%
   mutate(
+    regime = recode(regime, "E2" = "Early", "L2" = "Late", "U" = "Unburnt"),
     regime = factor(regime, levels = regime_levels),
     litter_type = factor(litter_type, levels = litter_levels)
   )
+
+### --- Fungi: Litter --- ###
 metadata_fungi_litter <- data.table::fread("data/sample_metadata_fungi.txt") %>%
   filter(community == "Leaf") %>%
   select(
-    everything(), PCo1 = "pco1_57_leaf_fungi", PCo2 = "pco2_38_leaf_fungi",
+    everything(),
+    PCo1 = "pco1_57_leaf_fungi",
+    PCo2 = "pco2_38_leaf_fungi",
     -c("community", "pco1_54_soil_fungi", "pco2_39_soil_fungi")
-    ) %>%
-  # Order the regime and litter type factors
+  ) %>%
   mutate(
+    regime = recode(regime, "E2" = "Early", "L2" = "Late", "U" = "Unburnt"),
     regime = factor(regime, levels = regime_levels),
     litter_type = factor(litter_type, levels = litter_levels)
   )
+
+### --- Bacteria: Soil --- ###
 metadata_bacteria_soil <- data.table::fread("data/sample_metadata_bacteria.txt") %>%
   filter(community == "Soil") %>%
   select(
-    everything(), PCo1 = "pco1_54_soil_bacteria", PCo2 = "pco2_40_soil_bacteria",
+    everything(),
+    PCo1 = "pco1_54_soil_bacteria",
+    PCo2 = "pco2_40_soil_bacteria",
     -c("community", "pco1_49_leaf_bacteria", "pco2_42_leaf_bacteria")
-    ) %>%
-  # Order the regime and litter type factors
+  ) %>%
   mutate(
+    regime = recode(regime, "E2" = "Early", "L2" = "Late", "U" = "Unburnt"),
     regime = factor(regime, levels = regime_levels),
     litter_type = factor(litter_type, levels = litter_levels)
   )
+
+### --- Bacteria: Litter --- ###
 metadata_bacteria_litter <- data.table::fread("data/sample_metadata_bacteria.txt") %>%
   filter(community == "Leaf") %>%
   select(
-    everything(), PCo1 = "pco1_49_leaf_bacteria", PCo2 = "pco2_42_leaf_bacteria",
+    everything(),
+    PCo1 = "pco1_49_leaf_bacteria",
+    PCo2 = "pco2_42_leaf_bacteria",
     -c("community", "pco1_54_soil_bacteria", "pco2_40_soil_bacteria")
-    ) %>%
-  # Order the regime and litter type factors
+  ) %>%
   mutate(
+    regime = recode(regime, "E2" = "Early", "L2" = "Late", "U" = "Unburnt"),
     regime = factor(regime, levels = regime_levels),
     litter_type = factor(litter_type, levels = litter_levels)
   )
+
 
 # Format the axis labels
 axis_labels <- c(
@@ -85,7 +100,7 @@ my_theme <- theme_minimal() +
     axis.title = element_text(size = title_size),
     axis.text = element_text(size = text_size),
     plot.title = element_text(hjust = 0.5, size = strip_size, face = "bold"),
-    plot.tag = element_markdown(size = tag_size, face = "bold"),
+    plot.tag = element_markdown(size = tag_size),
     legend.position = "none",
     aspect.ratio = 1
   )
@@ -93,21 +108,25 @@ my_theme <- theme_minimal() +
 #### Dummy legend ####
 
 # Define colours
-my_cols <- c("E2" = "#3B0F70CC", "L2" = "#B63679CC", "U" = "#FE9F6DCC")
+my_cols <- c("Early" = "#3B0F70CC", "Late" = "#B63679CC", "Unburnt" = "#FE9F6DCC")
 
 
 # Dummy tibble with all regime/shape combinations
 dummy_data <- expand.grid(
   regime = names(my_cols),
-  litter_type = c("Leaf", "Grass")
+  litter_type = c("Broadleaf", "Grass")
 )
 
 # Dummy plot that only serves to generate legend
 dummy_plot <- ggplot(dummy_data, aes(x = 1, y = 1, colour = regime, shape = litter_type)) +
   geom_point(size = 3) +
   scale_colour_manual(values = my_cols) +
-  scale_shape_manual(values = c("Leaf" = 16, "Grass" = 1)) +
+  scale_shape_manual(values = c("Broadleaf" = 16, "Grass" = 1)) +
   labs(colour = "Regime", shape = "Litter type") +
+  guides(
+    colour = guide_legend(order = 1),
+    shape  = guide_legend(order = 2)
+  ) +
   theme_void() +
   theme(
     legend.position = "right",
@@ -278,9 +297,22 @@ figure_final <- cowplot::plot_grid(
   figure, legend_dummy, rel_widths = c(1, 0.15)
 )
 
+# Create output directory
+if (!dir.exists("output")) {
+  dir.create("output")
+}
+
 # Save figure
 ggsave(
   "output/figure_pcoa.pdf",
   width = 15, height = 13, units = "cm",
+)
+ggsave(
+  "output/figure_pcoa.tif",
+  width = 15, height = 13, units = "cm",
+)
+ggsave(
+  "output/figure_pcoa.png",
+  width = 15, height = 13, units = "cm", dpi = 300
 )
 
