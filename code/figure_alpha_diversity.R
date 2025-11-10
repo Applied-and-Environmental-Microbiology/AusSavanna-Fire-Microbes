@@ -369,6 +369,11 @@ figure_shannon_diversity_final <- cowplot::plot_grid(
   figure_shannon_diversity, dummy_legend, rel_widths = c(1, 0.24)
 )
 
+# Create output directory if it doesn't exist
+if (!dir.exists("output")) {
+  dir.create("output")
+}
+
 # Save Figure 1
 ggsave(
   filename = "output/figure_shannon_diversity.tif",
@@ -1006,3 +1011,4 @@ ggsave(
   units = "cm",
   bg = "white"
 )
+
