@@ -108,7 +108,7 @@ my_theme <- theme_minimal() +
 #### Dummy legend ####
 
 # Define colours
-my_cols <- c("Early" = "#3B0F70CC", "Late" = "#B63679CC", "Unburnt" = "#FE9F6DCC")
+my_cols <- c("Early" = "#b84c4c", "Late" = "#d4813a", "Unburnt" = "#4d9b6f")
 
 
 # Dummy tibble with all regime/shape combinations
